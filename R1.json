@@ -1,0 +1,623 @@
+{
+  "name": "R1",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "daysInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "80dc0b4b-3f6c-4437-898b-1bb65b1d2b90",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1184,
+        136
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://export.arxiv.org/api/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "search_query",
+              "value": "={{ $json.topics.map(t => 'all:' + t).join('+OR+') }}"
+            },
+            {
+              "name": "start",
+              "value": "0"
+            },
+            {
+              "name": "max_results",
+              "value": "15"
+            },
+            {
+              "name": "sortBy",
+              "value": "submittedDate"
+            },
+            {
+              "name": "sortOrder",
+              "value": "descending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "54cbd66d-3176-4dde-8039-83e12810a7e1",
+      "name": "Fetch arXiv",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -736,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.semanticscholar.org/graph/v1/paper/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $('Set Topics').item.json.topics.join(' ') }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            },
+            {
+              "name": "fields",
+              "value": "title,abstract,authors,year,url,citationCount,publicationDate"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "1a73d164-e173-4347-a838-6857b99138d5",
+      "name": "Fetch Semantic Scholar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -736,
+        -32
+      ],
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://huggingface.co/api/daily_papers",
+        "options": {}
+      },
+      "id": "62fa5f57-2da7-4d74-a20e-fd64e781f963",
+      "name": "Fetch HuggingFace Papers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -736,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "sent_papers",
+        "returnAll": true,
+        "filters": {
+          "conditions": []
+        }
+      },
+      "id": "a067611f-6881-4b8d-b97f-a0a45ba6570e",
+      "name": "Get Sent Papers (Supabase)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        304
+      ],
+      "retryOnFail": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "BNjpasRERNMm9nQH",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "user_preferences",
+        "returnAll": true
+      },
+      "id": "01a696a7-5b57-40ff-baec-fe472bb67535",
+      "name": "Get User Preferences",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        496
+      ],
+      "retryOnFail": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "BNjpasRERNMm9nQH",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const allSources = $input.all();\nconst papers = [];\n\nallSources.forEach(source => {\n  const data = source.json;\n\n  // arXiv — comes as raw XML string in data.data\n  if (data.data && typeof data.data === 'string' && data.data.includes('<feed')) {\n    const xml = data.data;\n    const entries = xml.split('<entry>').slice(1);\n    entries.forEach(entry => {\n      const getId = (tag) => {\n        const m = entry.match(new RegExp(`<${tag}[^>]*>([\\\\s\\\\S]*?)<\\\\/${tag}>`));\n        return m ? m[1].trim() : '';\n      };\n      const id = getId('id');\n      const title = getId('title').replace(/\\s+/g, ' ');\n      const summary = getId('summary').replace(/\\s+/g, ' ');\n      const published = getId('published');\n      const authorMatches = [...entry.matchAll(/<name>([\\s\\S]*?)<\\/name>/g)];\n      const authors = authorMatches.map(m => m[1].trim()).join(', ');\n      if (title) {\n        papers.push({ id, title, abstract: summary, authors, url: id, source: 'arxiv', published });\n      }\n    });\n  }\n\n  // HuggingFace — array of objects with paper key\n  if (Array.isArray(data) && data[0]?.paper) {\n    data.forEach(p => {\n      if (p.paper?.title) {\n        papers.push({\n          id: p.paper?.id || '',\n          title: p.paper?.title || '',\n          abstract: p.paper?.summary || '',\n          authors: p.paper?.authors?.map(a => a.name).join(', ') || '',\n          url: `https://huggingface.co/papers/${p.paper?.id}`,\n          source: 'huggingface',\n          published: p.publishedAt || ''\n        });\n      }\n    });\n  }\n\n  // Semantic Scholar — has data.data array\n  if (data.data && Array.isArray(data.data)) {\n    data.data.forEach(p => {\n      if (p.title) {\n        papers.push({\n          id: p.paperId || '',\n          title: p.title || '',\n          abstract: p.abstract || '',\n          authors: p.authors?.map(a => a.name).join(', ') || '',\n          url: p.url || '',\n          source: 'semantic_scholar',\n          published: p.publicationDate || ''\n        });\n      }\n    });\n  }\n});\n\nreturn [{ json: { papers, total: papers.length } }];"
+      },
+      "id": "74a94d22-97f2-46b5-aabb-95fa6fa828a2",
+      "name": "Normalize All Papers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const papers = $('Normalize All Papers').first().json.papers || [];\n\nlet sentSet = new Set();\ntry {\n  const sentItems = $('Get Sent Papers (Supabase)').all();\n  sentItems.forEach(i => {\n    if (i.json.paper_id) sentSet.add(i.json.paper_id);\n  });\n} catch(e) {\n  sentSet = new Set();\n}\n\nconst newPapers = papers.filter(p => p.id && !sentSet.has(p.id));\n\nconst seen = new Set();\nconst deduped = newPapers.filter(p => {\n  if (!p.title) return false;\n  const key = p.title.toLowerCase().slice(0, 60);\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n});\n\nreturn [{ json: { papers: deduped, count: deduped.length } }];"
+      },
+      "id": "ab1c8cea-b1dd-4a72-9321-91891e758448",
+      "name": "Dedup & Filter New",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rankingRaw = $('Groq: Rank & Summarize').first().json.choices[0].message.content;\n\nconst papers = $('Dedup & Filter New').first().json.papers;\n\nlet rankings;\ntry {\n  const cleaned = rankingRaw.replace(/```json|```/g, '').trim();\n  rankings = JSON.parse(cleaned);\n} catch(e) {\n  return [{ json: { error: 'Failed to parse Claude response', raw: rankingRaw } }];\n}\n\nconst finalPapers = rankings\n  .slice(0, 8)\n  .map(r => ({\n    ...papers[r.index],\n    score: r.score,\n    tldr: r.tldr,\n    why_relevant: r.why_relevant\n  }))\n  .filter(p => p.title);\n\nreturn finalPapers.map(p => ({ json: p }));"
+      },
+      "id": "8e69ac99-6210-46d7-baeb-186b15f06fb1",
+      "name": "Build Final Paper List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Set Topics').item.json.telegram_channel_id }}",
+        "text": "=*New Paper* ({{ $json.score }}/10 relevance)\n\n*{{ $json.title }}*\n\n_{{ $json.tldr }}_\n\nWhy relevant: {{ $json.why_relevant }}\nSource: {{ $json.source }}\n\n[Read paper]({{ $json.url }})\n\nReact with 👍 or 👎 to train my recommendations!",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "👍 Like",
+                    "additionalFields": {
+                      "callback_data": "like"
+                    }
+                  },
+                  {
+                    "text": "👎 Dislike",
+                    "additionalFields": {
+                      "callback_data": "dislike"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "facc8eb9-607f-4089-b033-710fa45ed3ae",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        832,
+        208
+      ],
+      "webhookId": "736533b1-3fab-4361-9b2e-b0497ae462a2",
+      "credentials": {
+        "telegramApi": {
+          "id": "O9V5xixNyS5Vu71k",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "sent_papers",
+        "dataToSend": "=defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "paper_id",
+              "fieldValue": "={{ $('Build Final Paper List').item.json.id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $('Build Final Paper List').item.json.title }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $('Build Final Paper List').item.json.source }}"
+            },
+            {
+              "fieldId": "url",
+              "fieldValue": "={{ $('Build Final Paper List').item.json.url }}"
+            },
+            {
+              "fieldId": "score",
+              "fieldValue": "={{ parseInt($('Build Final Paper List').item.json.score) }}"
+            },
+            {
+              "fieldId": "tldr",
+              "fieldValue": "={{ $('Build Final Paper List').item.json.tldr }}"
+            },
+            {
+              "fieldId": "sent_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            },
+            {
+              "fieldId": "telegram_message_id",
+              "fieldValue": "={{ $json.result.message_id }}"
+            }
+          ]
+        }
+      },
+      "id": "02911c8f-4db2-4d46-931b-799c14334d08",
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        208
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "BNjpasRERNMm9nQH",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "18COuCk6eNuN5xIYknrCOYY7P6oA9IPCuRCv9KTmPcw8",
+          "mode": "list",
+          "cachedResultName": "Papers",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/18COuCk6eNuN5xIYknrCOYY7P6oA9IPCuRCv9KTmPcw8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/18COuCk6eNuN5xIYknrCOYY7P6oA9IPCuRCv9KTmPcw8/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "236953fb-0dc4-40a9-a7e0-83b5d577b41a",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        832,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "M9BqAf8XKkvrCtMh",
+          "name": "Google Sheets OAuth2 API"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    topics: [\n  'large language models',\n  'NLP transformers',\n  'retrieval augmented generation',\n  'AI agents autonomous',\n  'computer vision'\n  // customize these to your interests!\n],\ntelegram_channel_id: '-1003757634580'  // paste your -100xxx channel ID\n  }\n}];"
+      },
+      "id": "13e403ef-a4f9-456d-b5d4-99876e576a9a",
+      "name": "Set Topics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -960,
+        136
+      ],
+      "notes": "CONFIGURE: Edit your topics and Telegram channel ID here"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        384,
+        304
+      ],
+      "id": "a4dc60b5-3ee2-4ac4-bc72-586a3ba0c044",
+      "name": "Groq: Rank & Summarize",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ZsoXO6OG1FQu8aoS",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1184,
+        -448
+      ],
+      "id": "6ecd0645-5c19-414c-b6a5-1073a16f1811",
+      "name": "Wait",
+      "webhookId": "14c3b726-5c9d-47ec-add2-6170d850d5fe",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -512,
+        -48
+      ],
+      "id": "17599871-f48e-4799-ae07-fff2e386efeb",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const papers = $('Dedup & Filter New').first().json.papers || [];\n\nconst paperList = papers.slice(0, 10).map((p, i) => ({\n  index: i,\n  title: p.title,\n  abstract: (p.abstract || '').slice(0, 200),\n  source: p.source\n}));\n\nconst prompt = `You are a research paper curator. Rank these papers for someone interested in AI, LLMs, NLP, agents, computer vision.\n\nPapers:\n${JSON.stringify(paperList)}\n\nReturn ONLY a valid JSON array, no extra text, no markdown:\n[{\"index\": 0, \"score\": 9, \"tldr\": \"2 sentence summary\", \"why_relevant\": \"short phrase\"}]\nMax 8 papers sorted by score descending.`;\n\nreturn [{\n  json: {\n    model: \"llama-3.3-70b-versatile\",\n    temperature: 0.3,\n    messages: [{ role: \"user\", content: prompt }]\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        304
+      ],
+      "id": "66b02e1f-eed7-4626-b188-2f33a3ade215",
+      "name": "Build Groq Payload"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Topics": {
+      "main": [
+        [
+          {
+            "node": "Fetch arXiv",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch HuggingFace Papers",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Sent Papers (Supabase)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get User Preferences",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Semantic Scholar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch arXiv": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Semantic Scholar": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Normalize All Papers": {
+      "main": [
+        [
+          {
+            "node": "Dedup & Filter New",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Final Paper List": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sent Papers (Supabase)": {
+      "main": [
+        [
+          {
+            "node": "Dedup & Filter New",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch HuggingFace Papers": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Dedup & Filter New": {
+      "main": [
+        [
+          {
+            "node": "Build Groq Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq: Rank & Summarize": {
+      "main": [
+        [
+          {
+            "node": "Build Final Paper List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        []
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Normalize All Papers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Preferences": {
+      "main": [
+        [
+          {
+            "node": "Dedup & Filter New",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Groq Payload": {
+      "main": [
+        [
+          {
+            "node": "Groq: Rank & Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Telegram": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "47616125-3502-4408-b6b2-3bbc474f886f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d8d3cceaac243b93f5363847df7576763ce1efd66426c1aa0c1e42e002bf945e"
+  },
+  "id": "5vEv5XJgNQxxfcmd",
+  "tags": []
+}

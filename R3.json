@@ -1,0 +1,200 @@
+{
+  "name": "R3",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks"
+            }
+          ]
+        }
+      },
+      "id": "5ad0bf27-6685-446a-8d50-4f8ecfe3d6f6",
+      "name": "Weekly Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "sent_papers",
+        "limit": 20
+      },
+      "id": "683b9fef-8a6b-4583-b95b-d97b4bb26190",
+      "name": "Get This Week's Papers",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        -128
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "BNjpasRERNMm9nQH",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const papers = $input.all().map(i => i.json);\nif (papers.length === 0) {\n  return [{ json: { skip: true } }];\n}\n\n// Sort: prioritize liked papers, then by score\nconst sorted = papers.sort((a, b) => {\n  const aLiked = a.user_reaction === 'positive' ? 10 : 0;\n  const bLiked = b.user_reaction === 'positive' ? 10 : 0;\n  return (bLiked + b.score) - (aLiked + a.score);\n});\n\nconst top5 = sorted.slice(0, 5);\nreturn [{ json: { papers: top5, week_start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString() } }];\n"
+      },
+      "id": "a2c0108a-2577-4622-8741-b7f1c36e8071",
+      "name": "Pick Top 5 of Week",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "-1003757634580",
+        "text": "=<b>Weekly AI Research Digest</b>\nWeek of {{ $('Pick Top 5 of Week').item.json.week_start }}\n\n={{ $json.choices[0].message.content.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>').replace(/\\*(.*?)\\*/g, '<i>$1</i>').replace(/_(.*?)_/g, '<i>$1</i>') }}\n\n<i>Sent {{ $('Pick Top 5 of Week').item.json.papers.length }} papers this week. Keep reacting with 👍 👎 to improve future picks!</i>",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "00cb5849-63e3-4a4e-8303-4fcea1599e9b",
+      "name": "Send Digest to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1104,
+        -128
+      ],
+      "webhookId": "f5209f74-c775-4f09-97b9-eb08063e4f21",
+      "credentials": {
+        "telegramApi": {
+          "id": "O9V5xixNyS5Vu71k",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        880,
+        -128
+      ],
+      "id": "6452a0eb-cb2b-4d4b-a47b-3f477aa124ce",
+      "name": "Groq: Write Digest",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SViG9uBXA9eTJTzt",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const papers = $('Pick Top 5 of Week').first().json.papers || [];\nconst weekStart = $('Pick Top 5 of Week').first().json.week_start || '';\n\nconst paperList = papers.map(p => ({\n  title: p.title,\n  tldr: p.tldr || '',\n  source: p.source,\n  liked: p.user_reaction === 'positive'\n}));\n\nconst prompt = `Write a weekly AI research digest for a CS student focused on AI/ML/NLP.\n\nTop papers this week:\n${JSON.stringify(paperList, null, 2)}\n\nWrite a short engaging digest (max 400 words):\n1. One punchy opening sentence about the week theme\n2. Each paper in 2-3 lines max\n3. Note which were liked by user if any\n4. One closing trend line\n\nFormat for Telegram Markdown. Use *bold* for paper titles. No extra commentary.`;\n\nreturn [{\n  json: {\n    model: \"llama-3.3-70b-versatile\",\n    temperature: 0.7,\n    messages: [{ role: \"user\", content: prompt }]\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        -128
+      ],
+      "id": "da0a2318-9918-4543-8129-2a8140038046",
+      "name": "Build Dgest Payload"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Weekly Schedule": {
+      "main": [
+        [
+          {
+            "node": "Get This Week's Papers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get This Week's Papers": {
+      "main": [
+        [
+          {
+            "node": "Pick Top 5 of Week",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Top 5 of Week": {
+      "main": [
+        [
+          {
+            "node": "Build Dgest Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq: Write Digest": {
+      "main": [
+        [
+          {
+            "node": "Send Digest to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dgest Payload": {
+      "main": [
+        [
+          {
+            "node": "Groq: Write Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "fdff3f60-292f-420a-adbd-4b4fa1390e5f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d8d3cceaac243b93f5363847df7576763ce1efd66426c1aa0c1e42e002bf945e"
+  },
+  "id": "FZNclsLtkmPyHjeC",
+  "tags": []
+}

@@ -1,0 +1,299 @@
+{
+  "name": "R2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telegram-feedback",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "56a098fe-ff3f-4a4b-92b8-fef85b0970aa",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -656,
+        96
+      ],
+      "webhookId": "telegram-feedback-hook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\n// Debug - dekho kya aa raha hai\nconsole.log('Body:', JSON.stringify(body));\n\nconst reaction = body.message_reaction;\nconst callbackQuery = body.callback_query;\nconst message = body.message;\n\nlet messageId, chatId, reactionType, userId;\n\nif (reaction) {\n  messageId = reaction.message_id;\n  chatId = reaction.chat?.id;\n  userId = reaction.user?.id;\n  \n  const newReactions = reaction.new_reaction || [];\n  const oldReactions = reaction.old_reaction || [];\n  \n  // Reaction add hua\n  if (newReactions.length > 0) {\n    const emoji = newReactions[0]?.emoji || '';\n    reactionType = emoji === '👍' ? 'positive' : emoji === '👎' ? 'negative' : 'neutral';\n  }\n  // Reaction remove hua\n  else if (newReactions.length === 0 && oldReactions.length > 0) {\n    reactionType = 'neutral';\n  }\n} else if (callbackQuery) {\n  messageId = callbackQuery.message?.message_id;\n  chatId = callbackQuery.message?.chat?.id;\n  userId = callbackQuery.from?.id;\n  reactionType = callbackQuery.data === 'like' ? 'positive' : 'negative';\n}\n\nif (!messageId || !reactionType || reactionType === 'neutral') {\n  return [{ json: { skip: true, body: body } }];\n}\n\nreturn [{ json: { messageId, chatId, userId, reactionType, raw: body } }];"
+      },
+      "id": "3d7208a3-aa61-4a77-bdec-59f2b61d691f",
+      "name": "Parse Reaction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4ec6ed80-7781-4b7f-8ec0-7b9e29689cc7",
+      "name": "Is Valid Reaction?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "sent_papers",
+        "limit": "={{ 1 }}",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "telegram_message_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.messageId }}"
+            }
+          ]
+        }
+      },
+      "id": "36e96ed2-ee91-44ff-a45f-aaf61e8f0c20",
+      "name": "Lookup Paper by Message ID",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        16,
+        96
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "BNjpasRERNMm9nQH",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const paper = $('Lookup Paper by Message ID').first().json;\nconst reaction = $('Parse Reaction').first().json;\n\nif (!paper?.paper_id) {\n  return [{ json: { skip: true, reason: 'paper not found' } }];\n}\n\n// Extract topic keywords from title for preference scoring\nconst titleWords = paper.title\n  .toLowerCase()\n  .split(/\\s+/)\n  .filter(w => w.length > 4 && !['about','which','using','their','these','with','from','that'].includes(w));\n\nconst topicKeywords = titleWords.slice(0, 3).join('_');\n\nreturn [{\n  json: {\n    paper_id: paper.paper_id,\n    title: paper.title,\n    source: paper.source,\n    score_delta: reaction.reactionType === 'positive' ? 1 : -1,\n    reaction: reaction.reactionType,\n    topic_keywords: topicKeywords\n  }\n}];"
+      },
+      "id": "bfd513ba-e722-4d8a-b5cf-2412b6df0884",
+      "name": "Build Feedback Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "user_preferences",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "topic_keyword",
+              "condition": "eq",
+              "keyValue": "={{ $json.topic_keywords }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "score",
+              "fieldValue": "=={{ $json.score_delta }}"
+            },
+            {
+              "fieldId": "last_updated",
+              "fieldValue": "=={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "389d0e9a-53d5-4f2f-b595-930d55bce482",
+      "name": "Update User Preferences",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        464,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "BNjpasRERNMm9nQH",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "sent_papers",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "paper_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Build Feedback Data').item.json.paper_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "user_reaction",
+              "fieldValue": "={{ $('Build Feedback Data').item.json.reaction }}"
+            }
+          ]
+        }
+      },
+      "id": "899c3e01-1af7-4e6e-b75e-6aa1ec877758",
+      "name": "Record Reaction on Paper",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        464,
+        192
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "BNjpasRERNMm9nQH",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "3a9e6c40-1e5f-4fa0-8f5c-6df8063d4be4",
+      "name": "Respond to Telegram",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        688,
+        96
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Reaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Reaction": {
+      "main": [
+        [
+          {
+            "node": "Is Valid Reaction?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid Reaction?": {
+      "main": [
+        [
+          {
+            "node": "Lookup Paper by Message ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Paper by Message ID": {
+      "main": [
+        [
+          {
+            "node": "Build Feedback Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Feedback Data": {
+      "main": [
+        [
+          {
+            "node": "Update User Preferences",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Reaction on Paper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update User Preferences": {
+      "main": [
+        [
+          {
+            "node": "Respond to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Reaction on Paper": {
+      "main": [
+        [
+          {
+            "node": "Respond to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c2a6fe8f-81c0-4dcd-b22e-e08b5247b64c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d8d3cceaac243b93f5363847df7576763ce1efd66426c1aa0c1e42e002bf945e"
+  },
+  "id": "AMBM07i1tyBgLZzA",
+  "tags": []
+}

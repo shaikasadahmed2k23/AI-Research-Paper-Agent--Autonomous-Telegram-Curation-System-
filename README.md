@@ -194,35 +194,46 @@ Stores cumulative topic preference scores derived from user feedback. Each like/
 
 ---
 
-## 🖼️ Workflow Images
+## 🖼️ Workflow Images  
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 900px; margin: 0 auto;">
+<div style="
+  display: grid; 
+  grid-template-columns: 1fr 1fr; 
+  gap: 28px; 
+  max-width: 760px; 
+  margin: 40px auto; 
+  padding: 0 16px;
+">
 
   <!-- Row 1 -->
-  <div style="border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-    <img src="Work Flow Images/Work Flow 1.png" alt="Work Flow 1 – Main Curation Agent" style="width: 100%; height: 220px; object-fit: cover; display: block;" />
-    <p style="margin: 0; padding: 8px 12px; background: #f5f5f5; font-size: 13px; color: #444;">🔹 Workflow 1 — Main Curation Agent</p>
+  <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
+    <img src="Work Flow Images/Work Flow 1.png" alt="Work Flow 1 – Main Curation Agent" style="width: 100%; height: 200px; object-fit: cover;" />
+    <p style="margin: 0; padding: 10px 14px; background: #f7f7f7; font-size: 13px;">🔹 Workflow 1 — Main Curation Agent</p>
   </div>
-  <div style="border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-    <img src="Work Flow Images/Work Flow 2.png" alt="Work Flow 2 – Feedback Loop" style="width: 100%; height: 220px; object-fit: cover; display: block;" />
-    <p style="margin: 0; padding: 8px 12px; background: #f5f5f5; font-size: 13px; color: #444;">🔹 Workflow 2 — Feedback Loop</p>
+
+  <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
+    <img src="Work Flow Images/Work Flow 2.png" alt="Work Flow 2 – Feedback Loop" style="width: 100%; height: 200px; object-fit: cover;" />
+    <p style="margin: 0; padding: 10px 14px; background: #f7f7f7; font-size: 13px;">🔹 Workflow 2 — Feedback Loop</p>
   </div>
 
   <!-- Row 2 -->
-  <div style="border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-    <img src="Work Flow Images/Work Flow 3.png" alt="Work Flow 3 – Weekly Digest" style="width: 100%; height: 220px; object-fit: cover; display: block;" />
-    <p style="margin: 0; padding: 8px 12px; background: #f5f5f5; font-size: 13px; color: #444;">🔹 Workflow 3 — Weekly Digest</p>
-  </div>
-  <div style="border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-    <img src="Work Flow Images/Folder Structure.png" alt="Folder Structure" style="width: 100%; height: 220px; object-fit: cover; display: block;" />
-    <p style="margin: 0; padding: 8px 12px; background: #f5f5f5; font-size: 13px; color: #444;">🗂️ Folder Structure</p>
+  <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
+    <img src="Work Flow Images/Work Flow 3.png" alt="Work Flow 3 – Weekly Digest" style="width: 100%; height: 200px; object-fit: cover;" />
+    <p style="margin: 0; padding: 10px 14px; background: #f7f7f7; font-size: 13px;">🔹 Workflow 3 — Weekly Digest</p>
   </div>
 
-  <!-- Row 3: 1 image centered -->
-  <div style="grid-column: 1 / -1; display: flex; justify-content: center;">
-    <div style="width: 50%; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-      <img src="Work Flow Images/Daily Research papers.png" alt="Daily Research Papers – Telegram Output" style="width: 100%; height: 220px; object-fit: cover; display: block;" />
-      <p style="margin: 0; padding: 8px 12px; background: #f5f5f5; font-size: 13px; color: #444; text-align: center;">📬 Daily Research Papers — Telegram Output</p>
+  <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
+    <img src="Work Flow Images/Folder Structure.png" alt="Folder Structure" style="width: 100%; height: 200px; object-fit: cover;" />
+    <p style="margin: 0; padding: 10px 14px; background: #f7f7f7; font-size: 13px;">🗂️ Folder Structure</p>
+  </div>
+
+  <!-- Row 3 -->
+  <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
+    <div style="width: 60%; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
+      <img src="Work Flow Images/Daily Research papers.png" alt="Daily Research Papers – Telegram Output" style="width: 100%; height: 200px; object-fit: cover;" />
+      <p style="margin: 0; padding: 10px 14px; background: #f7f7f7; font-size: 13px; text-align: center;">
+        📬 Daily Research Papers — Telegram Output
+      </p>
     </div>
   </div>
 
